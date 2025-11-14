@@ -208,7 +208,11 @@ export default function Dashboard() {
     const total = pedidos.length;
     const pendentes = pedidos.filter((p) => p.status_id === 200).length;
     const concluidos = pedidos.filter((p) => p.status_id === 202).length;
-    const valorTotal = pedidos.reduce((sum, p) => sum + p.valor_total, 0);
+    const cancelados = pedidos.filter((p) => p.status_id === 203).length;
+    // Faturamento total excluindo pedidos cancelados
+    const valorTotal = pedidos
+      .filter((p) => p.status_id !== 203)
+      .reduce((sum, p) => sum + p.valor_total, 0);
 
     return [
       {
@@ -225,6 +229,11 @@ export default function Dashboard() {
         label: "Concluídos",
         value: concluidos.toString(),
         color: "#4CAF50",
+      },
+      {
+        label: "Cancelados",
+        value: cancelados.toString(),
+        color: "#F44336",
       },
       {
         label: "Faturamento Total",
@@ -274,7 +283,6 @@ export default function Dashboard() {
         <div className="header-content">
           <div className="header-title">
             <h1>Painel de Pedidos</h1>
-            <p>Gerencie todos os pedidos da sua loja</p>
           </div>
           <button
             onClick={() => supabase.auth.signOut()}

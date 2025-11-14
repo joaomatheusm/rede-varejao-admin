@@ -361,3 +361,37 @@
 .order-card.new-order {
   animation: slideInFromTop 0.6s cubic-bezier(0.4, 0, 0.2, 1);
 }
+
+/* Estilo para valores de pedidos cancelados */
+.order-value.canceled-value .currency-symbol,
+.order-value.canceled-value .amount {
+  color: #f44336 !important;
+  text-decoration: line-through;
+  opacity: 0.8;
+}
+
+.order-value.canceled-value::after {
+  content: " (CANCELADO)";
+  font-size: 0.7em;
+  font-weight: bold;
+  color: #f44336;
+  margin-left: 8px;
+  text-decoration: none;
+}
+
+/* Estilo para valores de pedidos cancelados */
+.order-value.canceled-value .currency-symbol,
+.order-value.canceled-value .amount {
+  color: #f44336 !important;
+  text-decoration: line-through;
+  opacity: 0.8;
+}
+
+.order-value.canceled-value::after {
+  content: " (CANCELADO)";
+  font-size: 0.7em;
+  font-weight: bold;
+  color: #f44336;
+  margin-left: 8px;
+  text-decoration: none;
+}

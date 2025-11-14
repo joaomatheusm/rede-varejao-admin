@@ -123,7 +123,11 @@ export default function OrderCard({
         </div>
 
         <div className="order-info-center">
-          <div className="order-value">
+          <div
+            className={`order-value ${
+              pedido.status_id === 203 ? "canceled-value" : ""
+            }`}
+          >
             <span className="currency-symbol">R$</span>
             <span className="amount">{pedido.valor_total.toFixed(2)}</span>
           </div>

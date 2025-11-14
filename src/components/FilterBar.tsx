@@ -38,7 +38,7 @@ export default function FilterBar({
         <div className="search-container">
           <input
             type="text"
-            placeholder="Buscar por ID, cliente ou produto..."
+            placeholder="Buscar por ID"
             value={searchTerm}
             onChange={(e) => onSearchChange(e.target.value)}
             className="search-input"

@@ -37,11 +37,7 @@
   border-color: var(--accent-color, #4caf50);
 }
 
-.stat-icon {
-  font-size: 36px;
-  transition: all 0.3s ease;
-  text-shadow: 0 2px 8px currentColor;
-}
+
 
 .stat-card:hover .stat-icon {
   transform: scale(1.1);
@@ -59,7 +55,6 @@
   font-size: 32px;
   font-weight: 700;
   line-height: 1;
-  text-shadow: 0 2px 4px currentColor;
   transition: all 0.3s ease;
 }
 
