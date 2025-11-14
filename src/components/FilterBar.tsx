@@ -35,20 +35,26 @@ export default function FilterBar({
   return (
     <div className="filter-bar">
       <div className="filter-section">
-        <div className="search-container">
-          <input
-            type="text"
-            placeholder="Buscar por ID"
-            value={searchTerm}
-            onChange={(e) => onSearchChange(e.target.value)}
-            className="search-input"
-          />
-          {searchTerm && (
-            <button className="clear-search" onClick={() => onSearchChange("")}>
-              ✕
-            </button>
-          )}
-        </div>
+        <label className="filter-label">
+          Busca:
+          <div className="search-container">
+            <input
+              type="text"
+              placeholder="Buscar por ID"
+              value={searchTerm}
+              onChange={(e) => onSearchChange(e.target.value)}
+              className="search-input"
+            />
+            {searchTerm && (
+              <button
+                className="clear-search"
+                onClick={() => onSearchChange("")}
+              >
+                ✕
+              </button>
+            )}
+          </div>
+        </label>
       </div>
 
       <div className="filter-section">
