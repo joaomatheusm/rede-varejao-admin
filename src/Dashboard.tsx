@@ -1,6 +1,9 @@
-import { useEffect, useState } from 'react'
-import { supabase } from './supabaseClient'
-import React from 'react';
+import { useEffect, useState, useMemo } from "react";
+import { supabase } from "./supabaseClient";
+import OrderCard from "./components/OrderCard";
+import StatsCard from "./components/StatsCard";
+import FilterBar from "./components/FilterBar";
+import "./Dashboard.css";
 
 type PedidoItem = {
   quantidade: number;
@@ -21,8 +24,8 @@ type Pedido = {
   metodo_pagamento: string;
   usuario_id: number;
   data_criacao: string;
-  descricao_status?: StatusDesc; 
-  pedido_item?: PedidoItem[]; 
+  descricao_status?: StatusDesc;
+  pedido_item?: PedidoItem[];
 };
 
 type StatusOption = {
@@ -35,21 +38,30 @@ export default function Dashboard() {
   const [statusOptions, setStatusOptions] = useState<StatusOption[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
-  
-  const [expandedRows, setExpandedRows] = useState<Set<number>>(new Set());
+
+  // Novos estados para filtros e busca
+  const [statusFilter, setStatusFilter] = useState("");
+  const [searchTerm, setSearchTerm] = useState("");
+  const [sortBy, setSortBy] = useState("date_desc");
+
+  // Estados para animações
+  const [newOrderIds, setNewOrderIds] = useState<Set<number>>(new Set());
 
   const fetchPedidos = async () => {
     try {
-      const { data: isAdmin, error: adminError } = await supabase.rpc('is_admin');
+      const { data: isAdmin, error: adminError } = await supabase.rpc(
+        "is_admin"
+      );
       if (adminError || !isAdmin) {
-        setError('Acesso negado. Você não é um administrador.');
+        setError("Acesso negado. Você não é um administrador.");
         supabase.auth.signOut();
         return;
       }
 
       const { data: pedidosData, error: pedidosError } = await supabase
-        .from('pedido')
-        .select(`
+        .from("pedido")
+        .select(
+          `
           *,
           descricao_status (descricao),
           pedido_item (
@@ -57,20 +69,20 @@ export default function Dashboard() {
             preco_unitario,
             produto (nome)
           )
-        `)
-        .order('data_criacao', { ascending: false });
+        `
+        )
+        .order("data_criacao", { ascending: false });
 
       if (pedidosError) throw pedidosError;
       setPedidos(pedidosData as any);
 
       const { data: statusData, error: statusError } = await supabase
-        .from('descricao_status')
-        .select('status_id, descricao')
-        .in('categoria', [1, 2]);
+        .from("descricao_status")
+        .select("status_id, descricao")
+        .in("categoria", [1, 2]);
 
       if (statusError) throw statusError;
       setStatusOptions(statusData || []);
-
     } catch (err: any) {
       setError(err.message);
       console.error(err);
@@ -85,16 +97,31 @@ export default function Dashboard() {
 
     // Configuração do Realtime
     const channel = supabase
-      .channel('realtime-pedidos')
+      .channel("realtime-pedidos")
       .on(
-        'postgres_changes',
+        "postgres_changes",
         {
-          event: 'INSERT', // Escuta apenas novos pedidos
-          schema: 'public',
-          table: 'pedido',
+          event: "INSERT", // Escuta apenas novos pedidos
+          schema: "public",
+          table: "pedido",
         },
         (payload) => {
-          console.log('Novo pedido detectado:', payload);
+          console.log("Novo pedido detectado:", payload);
+
+          // Marca como novo pedido para animação
+          if (payload.new?.id) {
+            setNewOrderIds((prev) => new Set([...prev, payload.new.id]));
+
+            // Remove a marcação após a animação
+            setTimeout(() => {
+              setNewOrderIds((prev) => {
+                const newSet = new Set(prev);
+                newSet.delete(payload.new.id);
+                return newSet;
+              });
+            }, 2000);
+          }
+
           // Recarrega a lista para trazer os dados completos
           fetchPedidos();
         }
@@ -108,215 +135,206 @@ export default function Dashboard() {
 
   const handleStatusChange = async (pedidoId: number, novoStatusId: string) => {
     try {
-      const { error } = await supabase.rpc('update_pedido_status', {
+      const { error } = await supabase.rpc("update_pedido_status", {
         p_pedido_id: pedidoId,
-        p_status_id: parseInt(novoStatusId, 10)
+        p_status_id: parseInt(novoStatusId, 10),
       });
       if (error) throw error;
-      
-      setPedidos(pedidos.map(p => 
-        p.id === pedidoId ? { ...p, status_id: parseInt(novoStatusId, 10) } : p
-      ));
+
+      setPedidos(
+        pedidos.map((p) =>
+          p.id === pedidoId
+            ? { ...p, status_id: parseInt(novoStatusId, 10) }
+            : p
+        )
+      );
     } catch (err: any) {
       alert(`Erro ao atualizar status: ${err.message}`);
     }
   };
 
-  const toggleRow = (pedidoId: number) => {
-    const newExpanded = new Set(expandedRows);
-    if (newExpanded.has(pedidoId)) {
-      newExpanded.delete(pedidoId);
-    } else {
-      newExpanded.add(pedidoId);
+  // Lógica de filtros e ordenação
+  const filteredAndSortedPedidos = useMemo(() => {
+    let filtered = [...pedidos];
+
+    // Filtro por status
+    if (statusFilter) {
+      filtered = filtered.filter(
+        (p) => p.status_id.toString() === statusFilter
+      );
     }
-    setExpandedRows(newExpanded);
-  };
 
-  const getStatusColor = (statusId: number) => {
-    if (statusId === 200) return '#FF9800'; 
-    if (statusId === 201) return '#2196F3'; 
-    if (statusId === 202) return '#4CAF50'; 
-    if (statusId === 203) return '#F44336'; 
-    return '#777';
-  };
+    // Filtro por termo de busca
+    if (searchTerm) {
+      const term = searchTerm.toLowerCase();
+      filtered = filtered.filter(
+        (p) =>
+          p.id.toString().includes(term) ||
+          p.usuario_id.toString().includes(term) ||
+          p.metodo_pagamento.toLowerCase().includes(term) ||
+          p.pedido_item?.some((item) =>
+            item.produto.nome.toLowerCase().includes(term)
+          )
+      );
+    }
 
-  if (loading) return <div style={{padding: 20, color: '#fff'}}>Carregando painel...</div>;
-  if (error) return <div style={{padding: 20, color: '#FF4757'}}>Erro: {error}</div>;
+    // Ordenação
+    filtered.sort((a, b) => {
+      switch (sortBy) {
+        case "date_asc":
+          return (
+            new Date(a.data_criacao).getTime() -
+            new Date(b.data_criacao).getTime()
+          );
+        case "date_desc":
+          return (
+            new Date(b.data_criacao).getTime() -
+            new Date(a.data_criacao).getTime()
+          );
+        case "value_asc":
+          return a.valor_total - b.valor_total;
+        case "value_desc":
+          return b.valor_total - a.valor_total;
+        default:
+          return 0;
+      }
+    });
+
+    return filtered;
+  }, [pedidos, statusFilter, searchTerm, sortBy]);
+
+  // Estatísticas para o StatsCard
+  const stats = useMemo(() => {
+    const total = pedidos.length;
+    const pendentes = pedidos.filter((p) => p.status_id === 200).length;
+    const concluidos = pedidos.filter((p) => p.status_id === 202).length;
+    const valorTotal = pedidos.reduce((sum, p) => sum + p.valor_total, 0);
+
+    return [
+      {
+        label: "Total de Pedidos",
+        value: total.toString(),
+        color: "#4CAF50",
+      },
+      {
+        label: "Pendentes",
+        value: pendentes.toString(),
+        color: "#FF9800",
+      },
+      {
+        label: "Concluídos",
+        value: concluidos.toString(),
+        color: "#4CAF50",
+      },
+      {
+        label: "Faturamento Total",
+        value: `R$ ${valorTotal.toFixed(2)}`,
+        color: "#2196F3",
+      },
+    ];
+  }, [pedidos]);
+
+  // Opções do filtro de status
+  const filterStatusOptions = useMemo(() => {
+    return statusOptions.map((status) => ({
+      value: status.status_id.toString(),
+      label: status.descricao,
+      count: pedidos.filter((p) => p.status_id === status.status_id).length,
+    }));
+  }, [statusOptions, pedidos]);
+
+  if (loading) {
+    return (
+      <div className="dashboard-container">
+        <div className="loading-container">
+          <div className="loading-spinner"></div>
+          <h2>Carregando painel...</h2>
+        </div>
+      </div>
+    );
+  }
+
+  if (error) {
+    return (
+      <div className="dashboard-container">
+        <div className="error-container">
+          <h2>❌ Erro no sistema</h2>
+          <p>{error}</p>
+          <button onClick={fetchPedidos} className="retry-btn">
+            Tentar novamente
+          </button>
+        </div>
+      </div>
+    );
+  }
 
   return (
-    <div style={styles.container}>
-      <div style={styles.header}>
-        <h1>Painel de Pedidos</h1>
-        <button onClick={() => supabase.auth.signOut()} style={styles.button}>
-          Sair
-        </button>
-      </div>
-      
-      <div style={{overflowX: 'auto'}}>
-        <table width="100%" style={styles.table}>
-          <thead>
-            <tr style={styles.tr}>
-              <th style={{...styles.th, width: '40px'}}></th>
-              <th style={styles.th}>ID</th>
-              <th style={styles.th}>Data</th>
-              <th style={styles.th}>Cliente</th>
-              <th style={styles.th}>Total</th>
-              <th style={styles.th}>Pagamento</th>
-              <th style={styles.th}>Status</th>
-            </tr>
-          </thead>
-          <tbody>
-            {pedidos.map(pedido => {
-              const isExpanded = expandedRows.has(pedido.id);
-              return (
-                <React.Fragment key={pedido.id}>
-                  <tr style={styles.tr} onClick={() => toggleRow(pedido.id)}>
-                    <td style={{...styles.td, cursor: 'pointer', textAlign: 'center'}}>
-                      <span style={{
-                        display: 'inline-block',
-                        transition: 'transform 0.2s',
-                        transform: isExpanded ? 'rotate(90deg)' : 'rotate(0deg)',
-                        fontSize: '12px'
-                      }}>
-                        ▶
-                      </span>
-                    </td>
-                    <td style={styles.td}>#{pedido.id}</td>
-                    <td style={styles.td}>
-                      {new Date(pedido.data_criacao).toLocaleString('pt-BR')}
-                    </td>
-                    <td style={styles.td}>ID: {pedido.usuario_id}</td>
-                    <td style={styles.td}>
-                      <strong style={{color: '#4CAF50'}}>R$ {pedido.valor_total.toFixed(2)}</strong>
-                    </td>
-                    <td style={styles.td}>{pedido.metodo_pagamento}</td>
-                    <td style={styles.td} onClick={(e) => e.stopPropagation()}> 
-                      <select 
-                        value={pedido.status_id}
-                        onChange={(e) => handleStatusChange(pedido.id, e.target.value)}
-                        style={{
-                          ...styles.select,
-                          borderLeft: `5px solid ${getStatusColor(pedido.status_id)}`
-                        }}
-                      >
-                        {statusOptions.map(status => (
-                          <option key={status.status_id} value={status.status_id}>
-                            {status.descricao}
-                          </option>
-                        ))}
-                      </select>
-                    </td>
-                  </tr>
+    <div className="dashboard-container">
+      <header className="dashboard-header">
+        <div className="header-content">
+          <div className="header-title">
+            <h1>Painel de Pedidos</h1>
+            <p>Gerencie todos os pedidos da sua loja</p>
+          </div>
+          <button
+            onClick={() => supabase.auth.signOut()}
+            className="logout-btn"
+          >
+            Sair
+          </button>
+        </div>
+      </header>
 
-                  {isExpanded && (
-                    <tr style={{backgroundColor: '#252525'}}>
-                      <td colSpan={7} style={{padding: '0'}}>
-                        <div style={styles.detailsContainer}>
-                          <h4 style={{marginTop: 0, marginBottom: '10px', color: '#aaa'}}>Itens do Pedido:</h4>
-                          <div style={styles.itemsGrid}>
-                            {pedido.pedido_item?.map((item, idx) => (
-                              <div key={idx} style={styles.itemCard}>
-                                <div style={{fontWeight: 'bold', color: '#fff'}}>
-                                  {item.quantidade}x {item.produto?.nome}
-                                </div>
-                                <div style={{color: '#4CAF50'}}>
-                                  R$ {item.preco_unitario.toFixed(2)} un.
-                                </div>
-                                <div style={{fontSize: '0.9em', color: '#888', borderTop: '1px solid #444', marginTop: '4px', paddingTop: '4px'}}>
-                                  Subtotal: R$ {(item.quantidade * item.preco_unitario).toFixed(2)}
-                                </div>
-                              </div>
-                            ))}
-                          </div>
-                        </div>
-                      </td>
-                    </tr>
-                  )}
-                </React.Fragment>
-              );
-            })}
-          </tbody>
-        </table>
-      </div>
+      <main className="dashboard-main">
+        <StatsCard stats={stats} />
+
+        <FilterBar
+          statusFilter={statusFilter}
+          onStatusFilterChange={setStatusFilter}
+          searchTerm={searchTerm}
+          onSearchChange={setSearchTerm}
+          sortBy={sortBy}
+          onSortChange={setSortBy}
+          statusOptions={filterStatusOptions}
+        />
+
+        <section className="orders-section">
+          <div className="section-header">
+            <h2>
+              Pedidos
+              <span className="orders-count">
+                ({filteredAndSortedPedidos.length})
+              </span>
+            </h2>
+            {searchTerm && (
+              <p className="search-info">
+                Resultados para: <strong>"{searchTerm}"</strong>
+              </p>
+            )}
+          </div>
+
+          <div className="orders-grid">
+            {filteredAndSortedPedidos.length === 0 ? (
+              <div className="empty-state">
+                <div className="empty-icon">-</div>
+                <h3>Nenhum pedido encontrado</h3>
+                <p>
+                  Tente ajustar os filtros ou aguarde novos pedidos chegarem.
+                </p>
+              </div>
+            ) : (
+              filteredAndSortedPedidos.map((pedido) => (
+                <OrderCard
+                  key={pedido.id}
+                  pedido={pedido}
+                  statusOptions={statusOptions}
+                  onStatusChange={handleStatusChange}
+                />
+              ))
+            )}
+          </div>
+        </section>
+      </main>
     </div>
-  )
+  );
 }
-
-const styles = {
-  container: {
-    padding: '20px',
-    backgroundColor: '#121212',
-    color: '#f4f4f4',
-    minHeight: '100vh',
-  },
-  header: {
-    display: 'flex',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-    marginBottom: '20px'
-  },
-  button: {
-    backgroundColor: '#333',
-    color: 'white',
-    border: '1px solid #555',
-    padding: '8px 16px',
-    borderRadius: '4px',
-    cursor: 'pointer'
-  },
-  table: {
-    borderCollapse: 'collapse' as 'collapse',
-    fontSize: '14px',
-    width: '100%',
-    backgroundColor: '#1E1E1E',
-    borderRadius: '8px',
-    overflow: 'hidden'
-  },
-  th: {
-    borderBottom: '2px solid #333',
-    padding: '12px 15px',
-    textAlign: 'left' as 'left',
-    backgroundColor: '#252525',
-    color: '#aaa',
-    textTransform: 'uppercase' as 'uppercase',
-    fontSize: '0.85em',
-    letterSpacing: '1px'
-  },
-  td: {
-    borderBottom: '1px solid #333',
-    padding: '12px 15px',
-    verticalAlign: 'middle'
-  },
-  tr: {
-    cursor: 'pointer',
-    transition: 'background-color 0.2s',
-    '&:hover': {
-      backgroundColor: '#2a2a2a'
-    }
-  },
-  select: {
-    padding: '8px',
-    fontSize: '14px',
-    backgroundColor: '#2C2C2C',
-    color: 'white',
-    border: '1px solid #444',
-    borderRadius: '4px',
-    width: '100%',
-    cursor: 'pointer'
-  },
-  detailsContainer: {
-    padding: '20px',
-    borderLeft: '4px solid #4CAF50',
-    backgroundColor: '#1a1a1a'
-  },
-  itemsGrid: {
-    display: 'grid',
-    gridTemplateColumns: 'repeat(auto-fill, minmax(200px, 1fr))',
-    gap: '15px'
-  },
-  itemCard: {
-    backgroundColor: '#2C2C2C',
-    padding: '10px',
-    borderRadius: '6px',
-    border: '1px solid #444'
-  }
-};
